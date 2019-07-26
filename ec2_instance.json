@@ -1,0 +1,29 @@
+{
+  "Description" : "Deploy Single EC2 Linux Instance",
+  "Parameters": {
+    "KeyPair" : {
+      "Description" : "EC2 Key Pair for SSH Access",
+      "Type" : "String"
+    }
+  },
+  "Resources" : {
+    "Ec2Instance": {
+      "Type": "AWS::EC2::Instance",
+      "Properties": {
+        "KeyName": { 
+          "Ref": "KeyPair"
+        },
+        "ImageId": "ami-0b898040803850657"
+      }
+    }
+  },
+  "Outputs" : {
+    "InstanceId" : {
+      "Description" : "The InstanceId of EC2 Instance",
+      "Value" : {
+        "Ref" : "Ec2Instance"
+      }
+    }
+  },
+  "AWSTemplateFormatVersion" : "2010-09-09"
+}
