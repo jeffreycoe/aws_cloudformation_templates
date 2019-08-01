@@ -10,6 +10,11 @@
       "Type": "String",
       "AllowedValues": ["DEV", "QA", "NONPROD", "PROD"]
     },
+    "VpcCidr": {
+      "Description": "",
+      "Type": "String",
+      "Default": "192.168.0.0/16"
+    },
     "PrivateSubnetCidr": {
       "Description": "",
       "Type": "String",
@@ -18,14 +23,14 @@
     "PublicSubnetCidr": {
       "Description": "",
       "Type": "String",
-      "Default": "10.100.1.0/24"
+      "Default": "192.168.2.0/24"
     }
   },
   "Resources" : {
     "ClientVPC": {
       "Type": "AWS::EC2::VPC",
       "Properties": {
-        "CidrBlock": { "Ref": "PrivateSubnetCidr" },
+        "CidrBlock": { "Ref": "VpcCidr" },
         "EnableDnsSupport": true,
         "EnableDnsHostnames": true,
         "Tags": [
