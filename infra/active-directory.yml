@@ -1,0 +1,116 @@
+# Reference: https://docs.aws.amazon.com/quickstart/latest/active-directory-ds/welcome.html
+# Removed VPC and Security Group resources for personal testing -- Do not use
+---
+Description: Provision Active Directory Domain Services in an EC2 instance
+Parameters:
+  ClientMnemonic:
+    Description: Client Mnemonic
+    Type: String
+  InstanceType:
+    Description: EC2 Instance Type
+    Type: String
+    Default: t2.medium
+    AllowedValues:
+      - t2.micro
+      - t2.medium
+      - t2.large
+    ConstraintDescription: Must be a valid EC2 instance type
+  KeyPair:
+    Description: Name of an existing EC2 key pair
+    Type: AWS::EC2::KeyPair::KeyName
+    ConstraintDescription: Must be the name of the an existing EC2 Key Pair
+    Default: default
+  RestoreModePassword:
+    Description: Password for a separate Administrator account when the domain controller is in Restore Mode. Must be at least 8 characters containing letters, numbers and symbols
+    Type: String
+    MinLength: 8
+    MaxLength: 32
+    AllowedPattern: (?=^.{6,255}$)((?=.*\\d)(?=.*[A-Z])(?=.*[a-z])|(?=.*\\d)(?=.*[^A-Za-z0-9])(?=.*[a-z])|(?=.*[^A-Za-z0-9])(?=.*[A-Z])(?=.*[a-z])|(?=.*\\d)(?=.*[A-Z])(?=.*[^A-Za-z0-9]))^.*
+    NoEcho: true
+  AMIImageId:
+    Description: Windows AMI Image ID
+    Type: String
+    Default: ami-027930fde2107b8f2
+Resources:
+  DomainController:
+    Type: AWS::EC2::Instance
+    Metadata: 
+      AWS::CloudFormation::Init: 
+        config: 
+          files: 
+            c:\\cfn\\cfn-hup.conf:
+              content: !Sub |
+                [main]
+                stack=${AWS::StackId}
+                region=${AWS::Region}
+            c:\\cfn\\hooks.d\\cfn-auto-reloader.conf:
+              content: !Sub |
+                [cfn-auto-reloader-hook]
+                triggers=post.update
+                path=Resources.DomainController.Metadata.AWS::CloudFormation::Init
+                action=cfn-init.exe -v -s ${AWS::StackId} -r DomainController --region ${AWS::Region}
+            C:\\cfn\\RunCommand.bat:
+              content: |
+                %~1
+                IF %ERRORLEVEL% GTR 10 ( exit /b 1 ) else ( exit /b 0 )
+          commands: 
+            1-DCPromo:
+              command: !Sub >
+                C:\\cfn\\RunCommand.bat "dcpromo /unattend /ReplicaOrNewDomain:Domain /NewDomain:Forest 
+                /NewDomainDNSName:${ClientMnemonic}.dev.cerner.com /ForestLevel:4 /DomainNetbiosName:${ClientMnemonic} 
+                /DomainLevel:4 /InstallDNS:Yes /ConfirmGc:Yes /CreateDNSDelegation:No /DatabasePath:"C:\\Windows\\NTDS" 
+                /LogPath:"C:\\Windows\\NTDS" /SYSVOLPath:"C:\\Windows\\SYSVOL" /SafeModeAdminPassword=${RestoreModePassword} /RebootOnCompletion:Yes"
+              waitAfterCompletion: forever
+            2-Signal-Success:
+              command: !Join
+                - ""
+                - - cfn-signal.exe -e 0 "
+                  - Fn::Base64: !Ref DomainControllerWaitHandle
+                  - '"'
+          services:
+            windows:
+              cfn-hup:
+                enabled: true
+                ensureRunning: true
+                files:
+                  - c:\\cfn\\cfn-hup.conf
+                  - c:\\cfn\\hooks.d\\cfn-auto-reloader.conf
+    Properties: 
+      ImageId: !Ref AMIImageId
+      InstanceType: !Ref InstanceType
+      KeyName: !Ref KeyPair
+      SecurityGroups:
+        - in-all-sg
+      UserData: !Base64
+        Fn::Sub: |
+          <script>
+            cfn-init.exe -v -s ${AWS::StackId} -r DomainController --region ${AWS::Region} 
+          </script>
+  DomainControllerWaitCondition: 
+    Type: AWS::CloudFormation::WaitCondition
+    DependsOn: DomainController
+    Properties:
+      Handle: !Ref DomainControllerWaitHandle
+      Timeout: 1500
+  DomainControllerWaitHandle:
+    Type: AWS::CloudFormation::WaitConditionHandle
+Outputs:
+  DomainControllerDNSName:
+    Value: !GetAtt
+      - DomainController
+      - PublicDnsName
+    Description: Public DNS name of Active Directory server for RDP connection
+  DomainControllerIP:
+    Value: !GetAtt 
+      - DomainController
+      - PrivateIp
+    Description: Private IP address of Active Directory server which is also a DNS server
+  DomainAdmin:
+    Value: !Join
+      - ""
+      - - !Ref ClientMnemonic
+        - \\Administrator
+    Description: Default domain administrator account
+  DomainAdminPassword:
+    Value: Please retrieve Administrator password of the instance
+AWSTemplateFormatVersion: 2010-09-09
