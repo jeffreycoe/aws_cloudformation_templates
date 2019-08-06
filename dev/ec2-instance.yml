@@ -1,0 +1,18 @@
+---
+Description: Deploy Single EC2 Linux Instance
+Parameters:
+  KeyPair:
+    Description: EC2 Key Pair for SSH Access
+    Type: String
+    Default: default
+Resources:
+  Ec2Instance:
+    Type: AWS::EC2::Instance
+    Properties:
+      KeyName: !Ref KeyPair
+    ImageId: ami-027930fde2107b8f2
+Outputs:
+  InstanceId:
+    Description: InstanceId of EC2 Instance
+    Value: !Ref Ec2Instance
+AWSTemplateFormatVersion: 2010-09-09
