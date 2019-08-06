@@ -1,0 +1,9 @@
+---
+Description: A text description for the template usage
+Parameters:
+  # A set of inputs used to customize the template per deployment
+Resources:
+  # The set of AWS resources and relationships between them
+Outputs:
+  # A set of values to be made visible to the stack creator
+AWSTemplateFormatVersion: 2010-09-09
