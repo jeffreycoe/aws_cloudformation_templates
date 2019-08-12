@@ -172,13 +172,19 @@
       "Description": "Reference to Client VPC",
       "Value": { "Ref": "ClientVPC" }
     },
-    "PublicSubnets": {
+    "PublicSubnet": {
       "Description": "Reference to the Public Subnet",
-      "Value": { "Ref": "PublicSubnet" }
+      "Value": { "Ref": "PublicSubnet" },
+      "Export": {
+        "Name": "VPC-PublicSubnet"
+      }
     },
     "PrivateSubnet": {
       "Description": "Reference to the Private Subnet",
-      "Value": { "Ref": "PrivateSubnet" }
+      "Value": { "Ref": "PrivateSubnet" },
+      "Export": {
+        "Name": "VPC-PrivateSubnet"
+      }
     },
     "NoIngressSecurityGroup": {
       "Description": "Security group to prevent traffic through network ingress",

@@ -113,4 +113,14 @@ Outputs:
     Description: Default domain administrator account
   DomainAdminPassword:
     Value: Please retrieve Administrator password of the instance
+  DomainDnsName:
+    Value: !Sub ${ClientMnemonic}.dev.cerner.com
+    Description: Active Directory Domain DNS Name
+    Export:
+      Name: ActiveDirectory-DomainDnsName
+  DomainRootDn:
+    Value: !Sub DC=${ClientMnemonic},DC=dev,DC=cerner,DC=com
+    Description: Root LDAP Distinguished Name for Active Directory domain
+    Export:
+      Name: ActiveDirectory-DomainLdapDn
 AWSTemplateFormatVersion: 2010-09-09
