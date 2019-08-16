@@ -1,5 +1,6 @@
 # Reference: https://docs.aws.amazon.com/quickstart/latest/active-directory-ds/welcome.html
 # Removed VPC and Security Group resources for personal testing -- Do not use
+# Use us-east-1 region
 ---
 Description: Provision Active Directory Domain Services in an EC2 instance
 Parameters:
@@ -9,17 +10,21 @@ Parameters:
   InstanceType:
     Description: EC2 Instance Type
     Type: String
-    Default: t2.medium
+    Default: t2.large
     AllowedValues:
       - t2.micro
       - t2.medium
       - t2.large
     ConstraintDescription: Must be a valid EC2 instance type
+  Ec2SecurityGroupName:
+    Description: Security group name to allow inbound access to the DC
+    Type: String
+    Default: in-all-sg
   KeyPair:
     Description: Name of an existing EC2 key pair
     Type: AWS::EC2::KeyPair::KeyName
     ConstraintDescription: Must be the name of the an existing EC2 Key Pair
-    Default: default
+    Default: ec2-keypair
   RestoreModePassword:
     Description: Password for a separate Administrator account when the domain controller is in Restore Mode. Must be at least 8 characters containing letters, numbers and symbols
     Type: String
@@ -31,6 +36,17 @@ Parameters:
     Description: Windows AMI Image ID
     Type: String
     Default: ami-027930fde2107b8f2
+  DomainAdminUsername:
+    Description: Username for Domain Administrator Account
+    Type: String
+    Default: ec2-ad-admin
+  DomainAdminPassword:
+    Description: Password for Domain Administrator Account
+    Type: String
+    MinLength: 8
+    MaxLength: 32
+    AllowedPattern: (?=^.{6,255}$)((?=.*\\d)(?=.*[A-Z])(?=.*[a-z])|(?=.*\\d)(?=.*[^A-Za-z0-9])(?=.*[a-z])|(?=.*[^A-Za-z0-9])(?=.*[A-Z])(?=.*[a-z])|(?=.*\\d)(?=.*[A-Z])(?=.*[^A-Za-z0-9]))^.*
+    NoEcho: true
 Resources:
   DomainController:
     Type: AWS::EC2::Instance
@@ -53,15 +69,28 @@ Resources:
               content: |
                 %~1
                 IF %ERRORLEVEL% GTR 10 ( exit /b 1 ) else ( exit /b 0 )
-          commands: 
+            C:\\cfn\\Deploy-NewADDSForest.ps1: 
+              content: !Sub |
+                $safeModePassword = ConvertTo-SecureString "${RestoreModePassword}" -AsPlainText -Force
+                $domainName = "${ClientMnemonic}.dev.cerner.com".ToLower()
+                $domainNetbiosName = "${ClientMnemonic}".ToUpper()
+                Install-WindowsFeature AD-Domain-Services -IncludeManagementTools
+                Install-ADDSForest -DomainName $domainName -SafeModeAdministratorPassword $safeModePassword -DatabasePath "C:\\Windows\\NTDS" -DomainMode 7 `
+                -DomainNetbiosName $domainNetbiosName -ForestMode 7 -InstallDns -LogPath "C:\\Windows\\NTDS" -SysvolPath "C:\\Windows\\SYSVOL" -Force
+            C:\\cfn\\Create-NewDomainAdminUser.ps1:
+              content: !Sub |
+                $password = ConvertTo-SecureString "${DomainAdminPassword}" -AsPlainText -Force
+                New-AdUser -Name ${DomainAdminUsername} -AccountPassword $password -Enabled:$true
+          commands:
             1-DCPromo:
-              command: !Sub >
-                C:\\cfn\\RunCommand.bat "dcpromo /unattend /ReplicaOrNewDomain:Domain /NewDomain:Forest 
-                /NewDomainDNSName:${ClientMnemonic}.dev.cerner.com /ForestLevel:4 /DomainNetbiosName:${ClientMnemonic} 
-                /DomainLevel:4 /InstallDNS:Yes /ConfirmGc:Yes /CreateDNSDelegation:No /DatabasePath:"C:\\Windows\\NTDS" 
-                /LogPath:"C:\\Windows\\NTDS" /SYSVOLPath:"C:\\Windows\\SYSVOL" /SafeModeAdminPassword=${RestoreModePassword} /RebootOnCompletion:Yes"
+              command: C:\\cfn\\RunCommand.bat "powershell.exe -ExecutionPolicy Bypass -File C:\\cfn\\Deploy-NewADDSForest.ps1"
               waitAfterCompletion: forever
-            2-Signal-Success:
+            2-AddDomainAdminUser:
+              command: !Sub |
+                C:\\cfn\\RunCommand.bat "powershell.exe -ExecutionPolicy Bypass -File C:\\cfn\\Create-NewDomainAdminUser.ps1"
+            3-DeleteTempScriptFiles:
+              command: C:\\cfn\\RunCommand.bat "powershell.exe -ExecutionPolicy Bypass -Command Remove-Item -Path C:\\cfn\\*.ps1 -Force"
+            4-Signal-Success:
               command: !Join
                 - ""
                 - - cfn-signal.exe -e 0 "
@@ -80,7 +109,7 @@ Resources:
       InstanceType: !Ref InstanceType
       KeyName: !Ref KeyPair
       SecurityGroups:
-        - in-all-sg
+        - !Ref Ec2SecurityGroupName
       UserData: !Base64
         Fn::Sub: |
           <script>
@@ -105,22 +134,22 @@ Outputs:
       - DomainController
       - PrivateIp
     Description: Private IP address of Active Directory server which is also a DNS server
-  DomainAdmin:
+  DomainAdminUsername:
     Value: !Join
       - ""
       - - !Ref ClientMnemonic
-        - \\Administrator
-    Description: Default domain administrator account
+        - \\
+        - !Ref DomainAdminUsername
+    Description: Domain administrator username
   DomainAdminPassword:
     Value: Please retrieve Administrator password of the instance
   DomainDnsName:
     Value: !Sub ${ClientMnemonic}.dev.cerner.com
     Description: Active Directory Domain DNS Name
-    Export:
-      Name: ActiveDirectory-DomainDnsName
-  DomainRootDn:
+  DomainLdapDn:
     Value: !Sub DC=${ClientMnemonic},DC=dev,DC=cerner,DC=com
     Description: Root LDAP Distinguished Name for Active Directory domain
-    Export:
-      Name: ActiveDirectory-DomainLdapDn
+  DomainNetbiosName:
+    Value: !Ref ClientMnemonic
+    Description: NetBIOS name for Active Directory domain
 AWSTemplateFormatVersion: 2010-09-09
