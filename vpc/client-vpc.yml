@@ -1,0 +1,213 @@
+---
+Description: This template deploys the test VPC configuration for a specific client
+Parameters:
+  ClientMnemonic:
+    Description: Client Mnemonic
+    Type: String
+  EnvironmentId:
+    Description: Environment Identifier
+    Type: String
+    AllowedValues:
+      - DEV
+      - QA
+      - NONPROD
+      - PROD
+  VpcCidr:
+    Description: ''
+    Type: String
+    Default: 192.168.0.0/16
+  PrivateSubnetCidr:
+    Description: ''
+    Type: String
+    Default: 192.168.1.0/24
+  PublicSubnetCidr:
+    Description: ''
+    Type: String
+    Default: 192.168.2.0/24
+Resources:
+  ClientVPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock:
+        !Ref VpcCidr
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+      - Key: Name
+        Value:
+          Fn::Join:
+          - "-"
+          - - VPC
+            - !Ref ClientMnemonic
+            - !Ref EnvironmentId
+  PublicGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+      - Key: Name
+        Value:
+          Fn::Join:
+          - "-"
+          - - PublicGW
+            - !Ref ClientMnemonic
+            - !Ref EnvironmentId
+  PublicGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      InternetGatewayId:
+        !Ref PublicGateway
+      VpcId:
+        !Ref ClientVPC
+  PublicSubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId:
+        !Ref ClientVPC
+      AvailabilityZone:
+        Fn::Select:
+        - 0
+        - Fn::GetAZs: ''
+      CidrBlock:
+        !Ref PublicSubnetCidr
+      MapPublicIpOnLaunch: true
+      Tags:
+      - Key: Name
+        Value:
+          Fn::Join:
+          - "-"
+          - - PublicSubnet
+            - !Ref ClientMnemonic
+            - !Ref EnvironmentId
+  PrivateSubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId:
+        !Ref ClientVPC
+      AvailabilityZone:
+        Fn::Select:
+        - 0
+        - Fn::GetAZs: ''
+      CidrBlock:
+        !Ref PrivateSubnetCidr
+      MapPublicIpOnLaunch: true
+      Tags:
+      - Key: Name
+        Value:
+          Fn::Join:
+          - "-"
+          - - PrivateSubnet
+            - !Ref ClientMnemonic
+            - !Ref EnvironmentId
+  NatGatewayEip:
+    Type: AWS::EC2::EIP
+    DependsOn: PublicGatewayAttachment
+    Properties:
+      Domain: vpc
+  NatGateway:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId:
+        Fn::GetAtt: NatGatewayEip.AllocationId
+      SubnetId:
+        !Ref PublicSubnet
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId:
+        !Ref ClientVPC
+      Tags:
+      - Key: Name
+        Value:
+          Fn::Join:
+          - "-"
+          - - PublicRouteTable
+            - !Ref ClientMnemonic
+            - !Ref EnvironmentId
+  DefaultPublicRoute:
+    Type: AWS::EC2::Route
+    DependsOn: PublicGatewayAttachment
+    Properties:
+      RouteTableId:
+        !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId:
+        !Ref PublicGateway
+  PublicSubnetRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId:
+        !Ref PublicRouteTable
+      SubnetId:
+        !Ref PublicSubnet
+  PrivateRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId:
+        !Ref ClientVPC
+      Tags:
+      - Key: Name
+        Value:
+          Fn::Join:
+          - "-"
+          - - PrivateRouteTable
+            - !Ref ClientMnemonic
+            - !Ref EnvironmentId
+  DefaultPrivateRoute:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId:
+        !Ref PrivateRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId:
+        !Ref NatGateway
+  PrivateSubnetRouteAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId:
+        !Ref PrivateRouteTable
+      SubnetId:
+        !Ref PrivateSubnet
+  NoIngressSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: no-ingress-sg
+      GroupDescription: Security group to prevent traffic through network ingress
+      VpcId:
+        !Ref ClientVPC
+  InAllSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: in-all-sg
+      GroupDescription: Allows all traffic inbound
+      VpcId: !Ref ClientVPC
+  InAllSecurityGroupIngress:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      FromPort: 0
+      ToPort: 65535
+      IpProtocol: tcp
+      CidrIp: 0.0.0.0/0
+      GroupId: !Ref InAllSecurityGroup
+
+Outputs:
+  ClientVPC:
+    Description: Reference to Client VPC
+    Value:
+      !Ref ClientVPC
+  PublicSubnet:
+    Description: Reference to the Public Subnet
+    Value:
+      !Ref PublicSubnet
+  PrivateSubnet:
+    Description: Reference to the Private Subnet
+    Value:
+      !Ref PrivateSubnet
+  NoIngressSecurityGroup:
+    Description: Security group to prevent traffic through network ingress
+    Value:
+      !Ref NoIngressSecurityGroup
+  InAllSecurityGroup:
+    Description: Security group to allow all inbound traffic
+    Value:
+      !Ref InAllSecurityGroup
+AWSTemplateFormatVersion: '2010-09-09'
