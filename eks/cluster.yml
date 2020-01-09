@@ -1,0 +1,24 @@
+---
+Description: AWS EKS Cluster Sample Template
+Parameters:
+  ClusterName:
+    Description: EKS Cluster Name
+    Type: String
+    Default: eks-test
+  SubnetIds:
+    Description: Subnet IDs for EKS Cluster
+    Type: String
+  EKSRoleArn:
+    Description: IAM Role ARN for EKS Cluster
+    Type: String
+Resources:
+  EKSCluster:
+    Type: AWS::EKS::Cluster
+    Properties:
+      Name: !Ref ClusterName
+      ResourcesVpcConfig:
+        SubnetIds: !Split
+          - ","
+          - !Ref SubnetIds
+      RoleArn: !Ref EKSRoleArn
+AWSTemplateFormatVersion: 2010-09-09
